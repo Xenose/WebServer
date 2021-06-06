@@ -22,14 +22,16 @@ atomic_uint __server_flags = SERVER_FLAG_IS_RUNNING;
 /* Setting up the server information */
 int setup_server_socket(server_sock* s)
 {
-   memset(&s->hints, 0, sizeof(s->hints));
+	memset(&s->hints, 0, sizeof(s->hints));
 
    s->hints.ai_family	= AF_INET6;
    s->hints.ai_socktype = SOCK_STREAM;
    s->hints.ai_flags	= AI_PASSIVE;
 
-   if (0 != getaddrinfo(0x0, s->port, &s->hints, &s->_result))
+   if (0 != getaddrinfo(0x0, s->port, &s->hints, &s->_result)) {
+      puts("Getting address info...");
       goto ERROR_EXIT;
+   }
 
    s->fd = socket(s->_result->ai_family, s->_result->ai_socktype, s->_result->ai_protocol);
 
@@ -78,8 +80,13 @@ ERROR_EXIT:
 /* We handle all the connections here */
 void send_response(client_sock* client, uint32_t index)
 {
+   char tmp[1024];
+
    if (client->data[index].events & POLLIN) {
       puts("pollin");
+      int r_length = recv(client->data[index].fd, tmp, 1024, 0);
+      write(1, "\n\n\n", 3);
+      write(1, tmp, r_length);
    }
       
    if (client->data[index].events & POLLRDNORM) {
@@ -183,15 +190,19 @@ int main(int arc, char** arv)
    server.port = (char*) malloc(sizeof(char) * 5);
    strcpy(server.port, PORT_NUMBER);
 
+   puts("Setting up the server socket...");
    if (0x0 != setup_server_socket(&server))
       goto ERROR_EXIT;
 
+   puts("Setting up client sockets...");
    if (0x0 != setup_client_sockets(&client))
       goto ERROR_EXIT;
 
+   puts("Fetching pages...");
    if (0x0 != fetch_pages(&client))
       goto ERROR_EXIT;
 
+   puts("Creating second thread...");
    if (-1 == clone(&response_thread, response_thread_stack + STACK_SIZE, CLONE_FILES | CLONE_VM | SIGCHLD ,&client)) {
       goto ERROR_EXIT;
    }   

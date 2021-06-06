@@ -6,6 +6,15 @@
 #include<poll.h>
 #include<uchar.h>
 
+#define PAGE_TYPE_TERMINAL	0x1
+#define PAGE_TYPE_DESKTOP	0x2
+#define PAGE_TYPE_MOBILE	0x4
+
+typedef struct __page_tmp_object {
+   struct page_tmp_object* next;
+   char* data;
+} page_tmp_object;
+
 typedef struct __webpage {
    char* name;
 
@@ -21,7 +30,8 @@ typedef struct __webpage {
 
 typedef struct __available_pages {
    uint32_t count;
-   webpage* data;
+   char** lang;
+   webpage** data;
 } available_pages;
 
 typedef struct __server_sock {
