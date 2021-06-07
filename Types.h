@@ -11,7 +11,7 @@
 #define PAGE_TYPE_MOBILE	0x4
 
 typedef struct __page_tmp_object {
-   struct page_tmp_object* next;
+   struct __page_tmp_object* next;
    char* data;
 } page_tmp_object;
 

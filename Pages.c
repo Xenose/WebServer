@@ -17,126 +17,150 @@ static inline int page_macros(page_tmp_object* obj, const char* page, uint32_t i
 	if (!strncmp("xweb_", &page[index], 5)) {
       switch(page[index + 5]) {
 			case 'a':
-				break;
 			case 'b':
-				break;
 			case 'c':
 				if (!strncmp("xweb_css", &page[index], 8)) {
 					puts("\033[31mxweb_css\033[0m");
 			 
 					if (flags & PAGE_TYPE_DESKTOP) {
 						obj->data = create_string("<link rel=\"stylesheet\" href=\"desktop.css\">");
-						break;
+						goto CSS_RETURN;
 					}
 					
 					if (flags & PAGE_TYPE_MOBILE) {
 						obj->data = create_string("<link rel=\"stylesheet\" href=\"mobile.css\">");
-						break;
+						goto CSS_RETURN;
 					}
+
+					obj->data = create_string("");
+					
+CSS_RETURN:
+					return strlen("xweb_css");
 				}
-				break;
 			case 'd':
-				break;
 			case 'e':
-				break;
 			case 'f':
-				break;
 			case 'g':
-				break;
 			case 'h':
-				break;
 			case 'i':
 				if (!strncmp("xweb_include", &page[index], 12)) {
 					puts("\033[31mxweb_include\033[0m");
+					obj->data = create_string("");
+					return strlen("xweb_include");
 				}
-				break;
 			case 'j':
 				if (!strncmp("xweb_javascript", &page[index], 15) && ~(flags & PAGE_TYPE_TERMINAL)) {
 					puts("\033[31mxweb_javascript\033[0m");
+					return strlen("xweb_javascript");
 				}
-				break;
 			case 'k':
-				break;
 			case 'l':
 				if (!strncmp("xweb_lang", &page[index], 9)) {
 					puts("\033[31mxweb_lang\033[0m");
 					obj->data = create_string_va("lang=\"", "jp", "\"", NULL);
-					break; 
+					return strlen("xweb_lang");
 				}
-				break;
 			case 'm':
 				if (!strncmp("xweb_menu", &page[index], 9)) {
 					puts("\033[31mxweb_menu\033[0m");
+					obj->data = create_string("");
+					return strlen("xweb_menu");
 				}
-				break;
 			case 'n':
-				break;
 			case 'o':
-				break;
 			case 'p':
 				if (!strncmp("xweb_parent", &page[index], 11)) {
 					puts("\033[31mxweb_parent\033[0m");
+					obj->data = create_string("");
+					printf("%lu\n", strlen("xweb_parent"));	
+					return strlen("xweb_parent");
 				}
-				break;
 			case 'q':
-				break;
 			case 'r':
-				break;
 			case 's':
 				if (!strncmp("xweb_script", &page[index], 11)) {
 					puts("\033[31mxweb_script\033[0m");
+					return strlen("xweb_script");
 				}
-				break;
 			case 't':
-				break;
 			case 'u':
-				break;
 			case 'v':
-				break;
 			case 'w':
-				break;
 			case 'x':
-				break;
 			case 'y':
-				break;
 			case 'z':
-				break;
+				{}
 		}
-		return index + strlen(obj->data);
 	}
-	
 	return 0;
 }
 
 /* Parsing the pages to a useble format for transmission */
-int parse_pages(int fd, webpage* pages_in, const char* lang)
+int parse_pages(int fd, webpage* pages_in, const char* lang, uint32_t flags)
 {
    uint32_t page_length = lseek(fd, 0, SEEK_END);
+	uint32_t page_bytes = 0;
    char* page = mmap(0, page_length, PROT_READ, MAP_PRIVATE, fd, 0);
-   char* cpage = malloc(sizeof(char) * page_length);
+   char* rpage = NULL;
+	
+	/* loop varibles index, start, result */
+	int32_t i, s, r;
 
-   page_tmp_object* page_list = NULL;
-   page_tmp_object* page_list_next = NULL; 
-
+	/* if mmap failed return with -1 */
    if (MAP_FAILED == page)
       goto ERROR_EXIT;
 
-   for (uint32_t i = 0, s = 0; i < page_length; i++) {
+	/* Pre-Allocating data, we don't want a segfault */
+   page_tmp_object* tmp = (page_tmp_object*)malloc(sizeof(page_tmp_object));
+   page_tmp_object* page_list = tmp;
+	page_tmp_object* page_next = NULL;
+   
+	tmp->data = NULL;
+	tmp->next = (page_tmp_object*)malloc(sizeof(page_tmp_object));
 
-      page_tmp_object* tmp = (page_tmp_object*)malloc(sizeof(page_tmp_object));
-      tmp->data = NULL;
-		s += page_macros(page_list, page, i, PAGE_TYPE_MOBILE);
+   for (i = 0, s = 0, r = 0; i < page_length; i++) {
 
-      /*if (0 != page_macros("jp", page, cpage, &j, &i, PAGE_TYPE_MOBILE))
-	 continue;*/
+		if (0 == (r = page_macros(tmp->next, page, i, flags)))
+			continue;
+
+		/* Magic time! */
+		int32_t html_length = i - s;
+		tmp->data = malloc(sizeof(char) * html_length);
+		memcpy(tmp->data, &page[s], html_length);
+		
+		page_bytes += strlen(tmp->data) + strlen(tmp->next->data);
+		tmp->next->next = (page_tmp_object*)malloc(sizeof(page_tmp_object));
+		tmp->next->next->next = (page_tmp_object*)malloc(sizeof(page_tmp_object));
+		tmp = tmp->next->next;
+
+		s = i + r;
    }
+
+	printf("s %d i %d\n", s, i);
+
+	tmp->data = malloc(sizeof(char) * (i - s));
+	memcpy(tmp->data, &page[s], i - s);
+	page_bytes += i - s;
+
+	rpage = (char*)malloc(sizeof(char) * page_bytes);
+	page_next = page_list;
+
+	for (i = 0; NULL != page_next->next;  ) {
+		page_tmp_object* old = page_next;
+		memcpy(&rpage[i], page_next->data, strlen(page_next->data));
+		i += strlen(page_next->data);
+		
+		page_next = page_next->next;
+		free(old);
+	}
    
 
    if (0 != munmap(page, page_length))
       goto ERROR_EXIT;
 
-   write(1, "\n", 1); 
-   write(1, cpage, page_length);
+	write(1, rpage, page_bytes);
+
+	printf("\rPage is %u bytes long\n", page_bytes);
 
    return 0;
 ERROR_EXIT:
@@ -180,7 +204,7 @@ int fetch_pages(client_sock* client)
    }
 
    int fd = open("index.html", O_RDONLY);
-   parse_pages(fd, client->a_pages.data[0], "jp");
+   parse_pages(fd, client->a_pages.data[0], "jp", PAGE_TYPE_MOBILE);
    close(fd);
 
    if (0 != closedir(dir))
